@@ -48,6 +48,10 @@ namespace Kesco.Lib.Win.ImageControl
 			appid.ProductName = "ImageControl";
 
 			srcds = new TwIdentity();
+			srcds.Manufacturer ="";
+			srcds.ProductFamily = "";
+			srcds.ProductName = "";
+			srcds.Version.Info = "";
 			srcds.Id = IntPtr.Zero;
 
 			evtmsg.EventPtr = Marshal.AllocHGlobal(Marshal.SizeOf(winmsg));
@@ -214,7 +218,8 @@ namespace Kesco.Lib.Win.ImageControl
 			{
 				TwUserInterface guif = new TwUserInterface();
 				rc = DSuserif(appid, srcds, TwDG.Control, TwDAT.UserInterface, TwMSG.DisableDS, guif);
-				rc = DSMident(appid, IntPtr.Zero, TwDG.Control, TwDAT.Identity, TwMSG.CloseDS, srcds);
+				if(Environment.OSVersion.Version.Major < 10 || rc != TwRC.Failure)
+					rc = DSMident(appid, IntPtr.Zero, TwDG.Control, TwDAT.Identity, TwMSG.CloseDS, srcds);
 			}
 		}
 

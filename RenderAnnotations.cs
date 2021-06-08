@@ -128,7 +128,7 @@ namespace Kesco.Lib.Win.ImageControl
 
 								g.TextRenderingHint = tt.FontRenderingHint;
 								sf.Trimming = StringTrimming.Word;
-								using (Font f = new Font(tt.LfFont.FontFamily, tt.LfFont.SizeInPoints * g.DpiY / (float)TiffAnnotation.GetDevicePixel(), tt.LfFont.Style))
+								using (Font f = new Font(tt.LfFont.FontFamily, tt.LfFont.SizeInPoints, tt.LfFont.Style))
 								g.DrawString(tt.TextPrivateData.SzAnoText, f, new SolidBrush(tt.RgbColor1), newRect, sf);
 
 								g.ResetTransform();
@@ -193,7 +193,7 @@ namespace Kesco.Lib.Win.ImageControl
 										break;
 
 								}
-								g.DrawString(an.TextPrivateData.SzAnoText, new Font(an.LfFont.FontFamily, an.LfFont.SizeInPoints * g.DpiY /(float)TiffAnnotation.GetDevicePixel(), an.LfFont.Style) , new SolidBrush(an.RgbColor2), newRect1, sf1);
+								g.DrawString(an.TextPrivateData.SzAnoText, new Font(an.LfFont.FontFamily, an.LfFont.SizeInPoints, an.LfFont.Style) , new SolidBrush(an.RgbColor2), newRect1, sf1);
 								g.ResetTransform();
 								if (bb.Selected)
 								{

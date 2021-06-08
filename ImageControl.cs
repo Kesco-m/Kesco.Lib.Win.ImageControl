@@ -198,6 +198,7 @@ namespace Kesco.Lib.Win.ImageControl
 		/// </summary>
 		private bool useTempImage;
 
+		private object lo = new object();
 		/// <summary>
 		/// коллекция видимых пользователю страниц
 		/// </summary>
@@ -1649,8 +1650,12 @@ namespace Kesco.Lib.Win.ImageControl
 				imgScan.ScanEnd();
 		}
 
-		public ImageControl(ErrorMessageHandler errHandler)
-			: this()
+
+		/// <summary>
+		/// Подключение событя информирования об ошибке
+		/// </summary>
+		/// <param name="errHandler"></param>
+		public void AddErrorHandle(ErrorMessageHandler errHandler)
 		{
 			errorMessageHandler = errHandler;
 		}
@@ -1996,7 +2001,7 @@ namespace Kesco.Lib.Win.ImageControl
 			else
 			{
 				PrintImage printImageInst = new PrintImage();
-				printImageInst.PrintPage(/*printImages*/null, null, startPage, endPage, 1, PrintOrientation.Auto, true, copyCount, "", null, null);
+				printImageInst.PrintPage((docID > 0 ? " #" + docID.ToString() : !string.IsNullOrWhiteSpace(fileName) ? " " + fileName : ""),/*printImages*/null, null, startPage, endPage, 1, PrintOrientation.Auto, true, copyCount, "", null, null);
 			}
 		}
 
@@ -2263,7 +2268,7 @@ namespace Kesco.Lib.Win.ImageControl
 						{
 							foreach(VisiblePreview vis in listvis)
 							{
-								if(vis.index ==  SelectedIndex)
+								if(vis.index == SelectedIndex)
 								{
 									var y = vis.rect.Y + 1;
 									if(y < 0)
@@ -2296,9 +2301,7 @@ namespace Kesco.Lib.Win.ImageControl
 									if(fileptr == IntPtr.Zero && bmp != null)
 										SelectPage(new PageInfo { Image = bmp });
 									else
-									{
 										SelectPage(GetImageFromTiff(fileptr, SelectedIndex));
-									}
 								}
 								finally
 								{
@@ -2310,7 +2313,7 @@ namespace Kesco.Lib.Win.ImageControl
 							{
 								SelectPage(GetImageFromTiff(fileptr, SelectedIndex));
 							}
-			
+
 							OnPageChange();
 							newPage = 0;
 							Refresh();
@@ -2850,7 +2853,7 @@ namespace Kesco.Lib.Win.ImageControl
 					g.InterpolationMode = CurrentInterpolationMode;
 					g.DrawImage(animatedImage, new Rectangle(0, 0, image.Width, image.Height), SelectionModeRectangle, GraphicsUnit.Pixel);
 				}
-				image = this.ConvertTo(animatedImage.PixelFormat, image, false);
+				image = libTiff.ConvertTo(animatedImage.PixelFormat, image);
 				return image;
 			}
 			catch(Exception ex)
@@ -2886,7 +2889,7 @@ namespace Kesco.Lib.Win.ImageControl
 					g.InterpolationMode = CurrentInterpolationMode;
 					g.DrawImage(animatedImage, new Rectangle(0, 0, image.Width, image.Height), SelectionModeRectangle, GraphicsUnit.Pixel);
 				}
-				image = this.ConvertTo(format, image, false);
+				image = libTiff.ConvertTo(format, image);
 				bool isIndexed = image.PixelFormat == PixelFormat.Format1bppIndexed;
 				image.SetResolution(animatedImage.VerticalResolution, animatedImage.HorizontalResolution);
 				libTiff.SaveBitmapToFile(tempImage, image, true);
@@ -3291,7 +3294,7 @@ namespace Kesco.Lib.Win.ImageControl
 			{
 				if(newFormat == PixelFormat.Format1bppIndexed || newFormat == PixelFormat.Format8bppIndexed || newFormat == PixelFormat.Format24bppRgb)
 				{
-					animatedImage = this.ConvertTo(newFormat, animatedImage, false);
+					animatedImage = libTiff.ConvertTo(newFormat, animatedImage);
 					List<Bitmap> imgs = new List<Bitmap>();
 					imgs.Add(animatedImage);
 					List<byte[]> anns = new List<byte[]>();
@@ -3320,7 +3323,7 @@ namespace Kesco.Lib.Win.ImageControl
 							img.Img.Dispose();
 							img.Img = null;
 						}
-						image = ConvertTo(animatedImage.PixelFormat, image, true);
+						image = libTiff.ConvertTo(animatedImage.PixelFormat, image);
 						image.SetResolution(animatedImage.HorizontalResolution, animatedImage.VerticalResolution);
 						animatedImage.Dispose();
 						animatedImage = image;
@@ -3811,7 +3814,7 @@ namespace Kesco.Lib.Win.ImageControl
 						return false;
 					}
 
-					PageInfo il = GetImageFromTiff(filePtr, n);
+					PageInfo il = GetImageFromTiff(filePtr, n, true);
 					if(il != null)
 					{
 						if(fileName != this.fileName)
@@ -4100,6 +4103,7 @@ namespace Kesco.Lib.Win.ImageControl
 			if(image == null)
 				return null;
 			Bitmap preview = null;
+			Image.GetThumbnailImageAbort myCallback = new Image.GetThumbnailImageAbort(ThumbnailCallback);
 
 			if(isCorrectScale)
 			{
@@ -4107,26 +4111,26 @@ namespace Kesco.Lib.Win.ImageControl
 				{
 					try
 					{
-						int w = (int)(140 * image.Width * image.HorizontalResolution / image.Height / image.VerticalResolution);
+						int w = 140;
 						int h = 140;
 						try
 						{
 							if(image.Width * image.VerticalResolution > image.Height * image.HorizontalResolution)
-							{
-								w = 140;
 								h = (int)(140 * image.Height * image.HorizontalResolution / image.Width / image.VerticalResolution);
-							}
+							else
+								w =(int)(140 * image.Width * image.HorizontalResolution / image.Height / image.VerticalResolution);
 						}
 						catch(Exception ex)
 						{
 							Tiff.LibTiffHelper.WriteToLog(ex);
 						}
-						preview = new Bitmap(w, h);
-						using(Graphics gr = Graphics.FromImage(preview))
-						{
-							gr.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
-							gr.DrawImage(image, 0, 0, w, h);
-						}
+						preview = (Bitmap)image.GetThumbnailImage(w, h, myCallback, IntPtr.Zero);
+						//preview = new Bitmap(w, h);
+						//using(Graphics gr = Graphics.FromImage(preview))
+						//{
+						//	gr.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+						//	gr.DrawImage(image, 0, 0, w, h);
+						//}
 					}
 					catch(Exception ex)
 					{
@@ -4158,6 +4162,11 @@ namespace Kesco.Lib.Win.ImageControl
 				}
 			}
 			return preview;
+		}
+
+		public bool ThumbnailCallback()
+		{
+			return false;
 		}
 
 		/// <summary>
@@ -4358,7 +4367,7 @@ namespace Kesco.Lib.Win.ImageControl
 
 					if(thumbnailPanelOrientation == TypeThumbnailPanelOrientation.Top || thumbnailPanelOrientation == TypeThumbnailPanelOrientation.Bottom)
 					{
-						h = 100;
+						h = 140;
 						w = 140;
 						nextHeight = widthThumbnailImage;
 						generalWidth = h;
@@ -4371,7 +4380,7 @@ namespace Kesco.Lib.Win.ImageControl
 					}
 					else
 					{
-						w = 100;
+						w = 140;
 						h = 140;
 						nextHeight = heightThumbnailImage;
 						generalWidth = w;
@@ -5211,14 +5220,14 @@ namespace Kesco.Lib.Win.ImageControl
 
 						if(Cursor == TiffCursors.Note)
 						{
-							rTextBox.Font = new Font(Registry.ATTACH_A_NOTE_TOOL_FONT_NAME, (float)(Registry.ATTACH_A_NOTE_TOOL_FONT_SIZE * zoom * animatedImage.VerticalResolution / (float)ppi), GraphicsUnit.World);
+							rTextBox.Font = new Font(Registry.ATTACH_A_NOTE_TOOL_FONT_NAME, (float)(Registry.ATTACH_A_NOTE_TOOL_FONT_SIZE * zoom ), GraphicsUnit.World);
 
 							rTextBox.BackColor = Registry.ATTACH_A_NOTE_TOOL_BACKCOLOR;//Color.GreenYellow;
 							rTextBox.ForeColor = Registry.ATTACH_A_NOTE_TOOL_FONT_COLOR;//Color.Black;
 						}
 						else
 						{
-							rTextBox.Font = new Font(Registry.TEXT_TOOL_FONT_NAME, (float)(Registry.ATTACH_A_NOTE_TOOL_FONT_SIZE * zoom * animatedImage.VerticalResolution / (float)ppi), GraphicsUnit.World);
+							rTextBox.Font = new Font(Registry.TEXT_TOOL_FONT_NAME, (float)(Registry.ATTACH_A_NOTE_TOOL_FONT_SIZE * zoom ), GraphicsUnit.World);
 							rTextBox.ForeColor = Registry.TEXT_TOOL_FONT_COLOR;
 						}
 						this.Controls.Add(rTextBox);
@@ -5970,7 +5979,7 @@ namespace Kesco.Lib.Win.ImageControl
 				}
 				else
 					rTextBox.ForeColor = ((TiffAnnotation.TypedText)SelectedBitmap).RgbColor1;
-				rTextBox.Font = SelectedBitmap.GetZoomFont(zoom * animatedImage.VerticalResolution / TiffAnnotation.GetDevicePixel());
+				rTextBox.Font = SelectedBitmap.GetZoomFont(zoom);
 				rTextBox.LostFocus += new EventHandler(rTextBox_LostFocus);
 				rTextBox.Location = new Point((int)Math.Round((SelectedBitmap.Rect.Location.X * zoom * ppi / animatedImage.HorizontalResolution)) + this.scrollX + this.rectAnimatedImage.X + 1, (int)Math.Round((SelectedBitmap.Rect.Location.Y * zoom * ppi / animatedImage.HorizontalResolution)) + this.scrollY + this.rectAnimatedImage.Y + 1);
 				rTextBox.Size = new Size((int)(SelectedBitmap.Rect.Size.Width * zoom * ppi / animatedImage.HorizontalResolution), (int)(SelectedBitmap.Rect.Size.Height * zoom * ppi / animatedImage.VerticalResolution));
@@ -6108,42 +6117,6 @@ namespace Kesco.Lib.Win.ImageControl
 			
 		}
 
-		/// <summary>
-		/// Конвертация изображения в указаный PixelFormat
-		/// После конвертации исходное изображение уничтожается
-		/// </summary>
-		/// <param name="format">требуемый PixelFormat</param>
-		/// <param name="image">исходное изображение</param>
-		/// <param name="calc">зарезервировано</param>
-		/// <returns>Изображение в указаном PixelFormat</returns>
-		public Bitmap ConvertTo(PixelFormat format, Bitmap image, bool calc)
-		{
-			Bitmap result = image;
-			if(format == PixelFormat.Format1bppIndexed && image.PixelFormat != PixelFormat.Format1bppIndexed)
-			{
-				result = libTiff.ConvertToBitonal(image);
-				image = null;
-			}
-			else if(format == PixelFormat.Format8bppIndexed && (image.PixelFormat != PixelFormat.Format8bppIndexed || !IsPalleteGrayscale(image.Palette)))
-			{
-				result = libTiff.ConvertToGrayscale(image);
-			}
-			if(result == null)
-				result = image;
-			else
-			{
-				if(!result.Equals(image))
-				{
-					if(image != null)
-					{
-						image.Dispose();
-						image = null;
-					}
-				}
-			}
-			return result;
-		}
-
 		private GraphicsPath GetIconNotes(Point point)
 		{
 			GraphicsPath gp = new GraphicsPath(System.Drawing.Drawing2D.FillMode.Alternate);
@@ -6171,257 +6144,267 @@ namespace Kesco.Lib.Win.ImageControl
 			Log.Logger.EnterMethod(this, "OnPaint(PaintEventArgs e)");
 #endif
 			// битмап, на котором будем рисовать
-			using(Bitmap bitmap = new Bitmap(this.Width, this.Height))
+			try
 			{
-				using(Graphics gr = Graphics.FromImage(bitmap))
+				using(Bitmap bitmap = new Bitmap(this.Width, this.Height))
 				{
-					//gr.SmoothingMode = SmoothingMode.HighQuality;
-
-					#region Рисование превьюшек
-					// высота битмапа (либо равна высоте контрола либо высоте всех превьюшек)
-					int thumbnailImagesBitmapHeight = heightThumbnailImage;
-					int thumbnailImagesBitmapWidth = widthThumbnailImage;
-					if(showThumbPanel && !string.IsNullOrEmpty(fileName))
+					using(Graphics gr = Graphics.FromImage(bitmap))
 					{
-						if(thumbnailImagesBitmapWidth > 1 && thumbnailImagesBitmapHeight > 1)
+						//gr.SmoothingMode = SmoothingMode.HighQuality;
+
+						#region Рисование превьюшек
+						// высота битмапа (либо равна высоте контрола либо высоте всех превьюшек)
+						int thumbnailImagesBitmapHeight = heightThumbnailImage;
+						int thumbnailImagesBitmapWidth = widthThumbnailImage;
+						if(showThumbPanel && !string.IsNullOrEmpty(fileName))
 						{
-							if(ThumbnailImagesBitmap == null || !this.isLockThumbnailImages)
+							if(thumbnailImagesBitmapWidth > 1 && thumbnailImagesBitmapHeight > 1)
 							{
-								try
+								if(ThumbnailImagesBitmap == null || !this.isLockThumbnailImages)
 								{
-									ThumbnailImagesBitmap = new Bitmap(thumbnailImagesBitmapWidth - 1, thumbnailImagesBitmapHeight - 1);
-								}
-								catch(Exception ex)
-								{
-									ThumbnailImagesBitmap = null;
-									Tiff.LibTiffHelper.WriteToLog(ex);
-								}
-								if(ThumbnailImagesBitmap != null)
-								{
-									using(Graphics grPreview = Graphics.FromImage(ThumbnailImagesBitmap))
+									try
 									{
-										//grPreview.SmoothingMode = SmoothingMode.HighQuality;
-										foreach(VisiblePreview vp in listvis)
+										ThumbnailImagesBitmap = new Bitmap(thumbnailImagesBitmapWidth - 1, thumbnailImagesBitmapHeight - 1);
+									}
+									catch(Exception ex)
+									{
+										ThumbnailImagesBitmap = null;
+										Tiff.LibTiffHelper.WriteToLog(ex);
+									}
+									if(ThumbnailImagesBitmap != null)
+									{
+										using(Graphics grPreview = Graphics.FromImage(ThumbnailImagesBitmap))
 										{
-											if(previews == null)
-												break;
-
-											Bitmap img = null;
-											if(previews.Count > vp.index)
-												img = previews[vp.index].Key;
-											if(img != null)
+											//grPreview.SmoothingMode = SmoothingMode.HighQuality;
+											foreach(VisiblePreview vp in listvis)
 											{
+												if(previews == null)
+													break;
 
-												if(thumbnailPanelOrientation == TypeThumbnailPanelOrientation.Top || thumbnailPanelOrientation == TypeThumbnailPanelOrientation.Bottom)
+												Bitmap img = null;
+												if(previews.Count > vp.index)
+													img = previews[vp.index].Key;
+												if(img != null)
 												{
-													grPreview.FillRectangle(Brushes.White, vp.rectPaint.X - 1, vp.rectPaint.Y - 1, img.Width + 2, img.Height + 2);
-													grPreview.FillRectangle(Brushes.Gray, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
-													grPreview.DrawRectangle(Pens.Black, vp.rectPaint.X - 2, vp.rectPaint.Y - 2, img.Width + 4, img.Height + 4);
-													grPreview.DrawImage(img, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
-													if(SelectedIndex == vp.index)
-														grPreview.DrawRectangle(new Pen(Brushes.Black, 2), vp.rectPaint.X - 4, vp.rectPaint.Y - 4, img.Width + 8, img.Height + 8);
 
-													grPreview.DrawString((vp.index + 1).ToString(), Font, Brushes.Black, vp.rectPaint.X, vp.rectPaint.Y + img.Height + 6);
-													if(previews[vp.index].Value)
+													if(thumbnailPanelOrientation == TypeThumbnailPanelOrientation.Top || thumbnailPanelOrientation == TypeThumbnailPanelOrientation.Bottom)
 													{
-														SizeF st = grPreview.MeasureString((vp.index + 1).ToString(), Font);
-														using(GraphicsPath path = GetIconNotes(new Point(vp.rectPaint.X + (int)st.Width + 3, vp.rectPaint.Y + img.Height + 6)))
-															grPreview.DrawPath(Pens.Black, path);
+														grPreview.FillRectangle(Brushes.White, vp.rectPaint.X - 1, vp.rectPaint.Y - 1, img.Width + 2, img.Height + 2);
+														grPreview.FillRectangle(Brushes.Gray, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
+														grPreview.DrawRectangle(Pens.Black, vp.rectPaint.X - 2, vp.rectPaint.Y - 2, img.Width + 4, img.Height + 4);
+														grPreview.DrawImage(img, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
+														if(SelectedIndex == vp.index)
+															grPreview.DrawRectangle(new Pen(Brushes.Black, 2), vp.rectPaint.X - 4, vp.rectPaint.Y - 4, img.Width + 8, img.Height + 8);
+
+														grPreview.DrawString((vp.index + 1).ToString(), Font, Brushes.Black, vp.rectPaint.X, vp.rectPaint.Y + img.Height + 6);
+														if(previews[vp.index].Value)
+														{
+															SizeF st = grPreview.MeasureString((vp.index + 1).ToString(), Font);
+															using(GraphicsPath path = GetIconNotes(new Point(vp.rectPaint.X + (int)st.Width + 3, vp.rectPaint.Y + img.Height + 6)))
+																grPreview.DrawPath(Pens.Black, path);
+														}
 													}
+													else
+													{
+														grPreview.FillRectangle(Brushes.White, vp.rectPaint.X - 1, vp.rectPaint.Y - 1, img.Width + 2, img.Height + 2);
+														grPreview.FillRectangle(Brushes.Gray, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
+														grPreview.DrawRectangle(Pens.Black, vp.rectPaint.X - 2, vp.rectPaint.Y - 2, img.Width + 4, img.Height + 4);
+														grPreview.DrawImage(img, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
+
+														if(SelectedIndex == vp.index)
+															grPreview.DrawRectangle(new Pen(Brushes.Black, 2), vp.rectPaint.X - 4, vp.rectPaint.Y - 4, img.Width + 8, img.Height + 8);
+														grPreview.DrawString((vp.index + 1).ToString(), Font, Brushes.Black, vp.rectPaint.X, vp.rectPaint.Y + img.Height + 6);
+														if(previews[vp.index].Value)
+														{
+															SizeF st = grPreview.MeasureString((vp.index + 1).ToString(), Font);
+															using(GraphicsPath path = GetIconNotes(new Point(vp.rectPaint.X + (int)st.Width + 3, vp.rectPaint.Y + img.Height + 6)))
+																grPreview.DrawPath(Pens.Black, path);
+														}
+													}
+
 												}
 												else
 												{
-													grPreview.FillRectangle(Brushes.White, vp.rectPaint.X - 1, vp.rectPaint.Y - 1, img.Width + 2, img.Height + 2);
-													grPreview.FillRectangle(Brushes.Gray, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
-													grPreview.DrawRectangle(Pens.Black, vp.rectPaint.X - 2, vp.rectPaint.Y - 2, img.Width + 4, img.Height + 4);
-													grPreview.DrawImage(img, vp.rectPaint.X, vp.rectPaint.Y, img.Width, img.Height);
-
+													grPreview.FillRectangle(Brushes.White, vp.rectPaint.X - 1, vp.rectPaint.Y - 1, 102, 142);
+													grPreview.FillRectangle(Brushes.Gray, vp.rectPaint.X, vp.rectPaint.Y, 100, 140);
+													grPreview.DrawRectangle(Pens.Black, vp.rectPaint.X - 2, vp.rectPaint.Y - 2, 104, 144);
 													if(SelectedIndex == vp.index)
-														grPreview.DrawRectangle(new Pen(Brushes.Black, 2), vp.rectPaint.X - 4, vp.rectPaint.Y - 4, img.Width + 8, img.Height + 8);
-													grPreview.DrawString((vp.index + 1).ToString(), Font, Brushes.Black, vp.rectPaint.X, vp.rectPaint.Y + img.Height + 6);
-													if(previews[vp.index].Value)
-													{
-														SizeF st = grPreview.MeasureString((vp.index + 1).ToString(), Font);
-														using(GraphicsPath path = GetIconNotes(new Point(vp.rectPaint.X + (int)st.Width + 3, vp.rectPaint.Y + img.Height + 6)))
-															grPreview.DrawPath(Pens.Black, path);
-													}
+														grPreview.DrawRectangle(new Pen(Brushes.Black, 2), vp.rectPaint.X - 4, vp.rectPaint.Y - 4, 108, 148);
+													grPreview.DrawString((vp.index + 1).ToString(), Font, Brushes.Black, vp.rectPaint.X, vp.rectPaint.Y + 146);
 												}
-
-											}
-											else
-											{
-												grPreview.FillRectangle(Brushes.White, vp.rectPaint.X - 1, vp.rectPaint.Y - 1, 102, 142);
-												grPreview.FillRectangle(Brushes.Gray, vp.rectPaint.X, vp.rectPaint.Y, 100, 140);
-												grPreview.DrawRectangle(Pens.Black, vp.rectPaint.X - 2, vp.rectPaint.Y - 2, 104, 144);
-												if(SelectedIndex == vp.index)
-													grPreview.DrawRectangle(new Pen(Brushes.Black, 2), vp.rectPaint.X - 4, vp.rectPaint.Y - 4, 108, 148);
-												grPreview.DrawString((vp.index + 1).ToString(), Font, Brushes.Black, vp.rectPaint.X, vp.rectPaint.Y + 146);
 											}
 										}
 									}
+									this.isLockThumbnailImages = true;
 								}
-								this.isLockThumbnailImages = true;
+								try
+								{
+									gr.FillRectangle(Brushes.White, rectThumbnailPanel.X + 1, rectThumbnailPanel.Y + 1, widthThumbnailImage - 3, heightThumbnailImage - 3);
+									if(ThumbnailImagesBitmap != null && ThumbnailImagesBitmap.Width > 0 && ThumbnailImagesBitmap.Height > 0)
+										gr.DrawImage(ThumbnailImagesBitmap, rectThumbnailPanel.X + 1, rectThumbnailPanel.Y + 1);
+									else
+										gr.FillRectangle(Brushes.White, 0, 0, this.Width, this.Height);
+									gr.DrawRectangle(Pens.Black, rectThumbnailPanel.X, rectThumbnailPanel.Y, widthThumbnailImage - 1, heightThumbnailImage - 1);
+								}
+								catch(Exception ex)
+								{
+									Tiff.LibTiffHelper.WriteToLog(ex);
+								}
+
 							}
+							else
+							{
+								try
+								{
+									gr.FillRectangle(Brushes.White, 0, 0, this.Width, this.Height);
+									gr.IntersectClip(rectSplitter);
+									gr.DrawRectangle(Pens.Black, 0, 0, this.Width - 1, this.Height - 1);
+								}
+								catch(Exception ex)
+								{
+									Tiff.LibTiffHelper.WriteToLog(ex);
+								}
+							}
+						}
+						else if(thumbnailImagesBitmapWidth > 1 && thumbnailImagesBitmapHeight > 1)
+						{
 							try
 							{
 								gr.FillRectangle(Brushes.White, rectThumbnailPanel.X + 1, rectThumbnailPanel.Y + 1, widthThumbnailImage - 3, heightThumbnailImage - 3);
-								if(ThumbnailImagesBitmap != null && ThumbnailImagesBitmap.Width > 0 && ThumbnailImagesBitmap.Height > 0)
-									gr.DrawImage(ThumbnailImagesBitmap, rectThumbnailPanel.X + 1, rectThumbnailPanel.Y + 1);
-								else
-									gr.FillRectangle(Brushes.White, 0, 0, this.Width, this.Height);
 								gr.DrawRectangle(Pens.Black, rectThumbnailPanel.X, rectThumbnailPanel.Y, widthThumbnailImage - 1, heightThumbnailImage - 1);
 							}
 							catch(Exception ex)
 							{
 								Tiff.LibTiffHelper.WriteToLog(ex);
 							}
+						}
 
-						}
-						else
-						{
-							try
-							{
-								gr.FillRectangle(Brushes.White, 0, 0, this.Width, this.Height);
-								gr.IntersectClip(rectSplitter);
-								gr.DrawRectangle(Pens.Black, 0, 0, this.Width - 1, this.Height - 1);
-							}
-							catch(Exception ex)
-							{
-								Tiff.LibTiffHelper.WriteToLog(ex);
-							}
-						}
-					}
-					else if(thumbnailImagesBitmapWidth > 1 && thumbnailImagesBitmapHeight > 1)
-					{
+						///конец рисования превьюшек///////////////////////////////////////////////////
+						///////////////////////////////////////////////////////////////////////////////
+						#endregion
+
+
+						/////////////////////////////////////////////////////////////////////////////////
+						//Рисование картинки////////////////////////////////////////////////////////////
+						#region Рисование картинки
 						try
 						{
-							gr.FillRectangle(Brushes.White, rectThumbnailPanel.X + 1, rectThumbnailPanel.Y + 1, widthThumbnailImage - 3, heightThumbnailImage - 3);
-							gr.DrawRectangle(Pens.Black, rectThumbnailPanel.X, rectThumbnailPanel.Y, widthThumbnailImage - 1, heightThumbnailImage - 1);
+							lock(lo)
+							using(Bitmap bitmapMainImage = new Bitmap(realWidthImage, realHeightImage))
+							{
+								using(Graphics grMainImage = Graphics.FromImage(bitmapMainImage))
+								{
+									//grMainImage.SmoothingMode = SmoothingMode.HighQuality;
+									grMainImage.InterpolationMode = CurrentInterpolationMode;
+									if(animatedImage != null)
+									{
+										if(IsRefreshBitmap)
+										{
+											Bitmap bufferAnimatedImage = animatedImage;
+											if(animatedImage.PixelFormat != CurrentPixelFormat || (CurrentPixelFormat == PixelFormat.Format8bppIndexed && !libTiff.IsPalleteGrayscale(animatedImage.Palette)))
+											{
+												Bitmap tempImage = libTiff.ConvertTo(CurrentPixelFormat, bufferAnimatedImage.Clone() as Bitmap);
+												if(tempImage != null)
+													bufferAnimatedImage = tempImage;
+											}
+											if(HasAnnotation() || IsAnnuled)
+											{
+												Bitmap bitmapImg = null;
+												//if(bufferAnimatedImage.PixelFormat == PixelFormat.Format1bppIndexed)
+												//	bitmapImg = bufferAnimatedImage.Clone(new Rectangle(0, 0, animatedImage.Width, animatedImage.Height), PixelFormat.Format24bppRgb);
+												//else
+												bitmapImg = bufferAnimatedImage.Clone(new Rectangle(0, 0, animatedImage.Width, animatedImage.Height), PixelFormat.Format24bppRgb);
+												if(bufferAnimatedImage != animatedImage)
+												bufferAnimatedImage.Dispose();
+												bufferAnimatedImage = null;
+												if(animatedImage.HorizontalResolution == 0)
+													bitmapImg.SetResolution(200, 200);
+												else
+													bitmapImg.SetResolution(this.animatedImage.HorizontalResolution, this.animatedImage.VerticalResolution);
+												using(Graphics g = Graphics.FromImage(bitmapImg))
+												{
+													g.InterpolationMode = CurrentInterpolationMode;
+													renderAnnotations.DrawAnnotation(g, this.tiffAnnotation, markGroupsVisibleList, bitmapImg, CurrentInterpolationMode, ref this.selectedRectangles, this.notesToSelectedRectangles);
+													if(AnnotationState == AnnotationsState.CreateText)
+													{
+														g.FillRectangle(Brushes.Black, new RectangleF(invalidRect.X + sin - 1, invalidRect.Y + sin - 1, invalidRect.Width - sin * 2 - 1, invalidRect.Height - sin * 2 - 1));
+														DrawSelectedRectangle(g, new Rectangle(invalidRect.X + sin, invalidRect.Y + sin, invalidRect.Width - sin * 2, invalidRect.Height - sin * 2));
+													}
+												}
+
+												if(cachedBitmap != null)
+													cachedBitmap.Dispose();
+												cachedBitmap = (Bitmap)bitmapImg.Clone();
+												bitmapImg.Dispose();
+												bitmapImg = null;
+											}
+											else
+												cachedBitmap = (Bitmap)bufferAnimatedImage.Clone();
+
+											IsRefreshBitmap = false;
+
+											if(bufferAnimatedImage != null && bufferAnimatedImage != animatedImage)
+											{
+												bufferAnimatedImage.Dispose();
+												bufferAnimatedImage = null;
+											}
+										}
+										grMainImage.DrawImage(cachedBitmap, scrollX, scrollY, zoomWigth, zoomHeigth);
+									}
+								}
+
+								try
+								{
+									gr.FillRectangle(SystemBrushes.Control, rectAnimatedImage.X + 1, rectAnimatedImage.Y + 1, widthImage - 3, heightImage - 3);
+									if(bitmapMainImage != null && bitmapMainImage.Width > 0 && bitmapMainImage.Height > 0)
+										gr.DrawImage(bitmapMainImage, rectAnimatedImage.X, rectAnimatedImage.Y);
+									gr.DrawRectangle(Pens.Black, rectAnimatedImage.X, rectAnimatedImage.Y, widthImage - 1, heightImage - 1);
+									if(TypeWorkAnimatedImage == TypeWorkImage.SelectionMode)
+									{
+										using(Pen dotedPen = new Pen(new SolidBrush(Color.Black), 1))
+										{
+											dotedPen.DashStyle = DashStyle.Dot;
+											gr.DrawRectangle(dotedPen, rectAnimatedImage.X + scrollX + (float)(SelectionModeRectangle.X * zoom * ppi / animatedImage.HorizontalResolution), rectAnimatedImage.Y + scrollY + (float)(SelectionModeRectangle.Y * zoom * ppi / animatedImage.VerticalResolution), (float)(SelectionModeRectangle.Width * zoom * ppi / animatedImage.HorizontalResolution), (float)(SelectionModeRectangle.Height * zoom * ppi / animatedImage.HorizontalResolution));
+											dotedPen.Dispose();
+										}
+									}
+								}
+								catch(Exception ex)
+								{
+									Tiff.LibTiffHelper.WriteToLog(ex);
+								}
+							}
 						}
-						catch(Exception ex)
-						{
-							Tiff.LibTiffHelper.WriteToLog(ex);
-						}
+						catch(Exception ex) { Tiff.LibTiffHelper.WriteToLog(ex); };
+						#endregion
 					}
 
-					///конец рисования превьюшек///////////////////////////////////////////////////
-					///////////////////////////////////////////////////////////////////////////////
-					#endregion
-
-
-					/////////////////////////////////////////////////////////////////////////////////
-					//Рисование картинки////////////////////////////////////////////////////////////
-					#region Рисование картинки
 					try
 					{
-						using(Bitmap bitmapMainImage = new Bitmap(realWidthImage, realHeightImage))
+						if(bitmap != null)
 						{
-							using(Graphics grMainImage = Graphics.FromImage(bitmapMainImage))
-							{
-								//grMainImage.SmoothingMode = SmoothingMode.HighQuality;
-								grMainImage.InterpolationMode = CurrentInterpolationMode;
-								if(animatedImage != null)
-								{
-									if(IsRefreshBitmap)
-									{
-										Bitmap bufferAnimatedImage = animatedImage;
-										if(animatedImage.PixelFormat != CurrentPixelFormat || (CurrentPixelFormat == PixelFormat.Format8bppIndexed && !IsPalleteGrayscale(animatedImage.Palette)))
-										{
-											Bitmap tempImage = this.ConvertTo(CurrentPixelFormat, bufferAnimatedImage.Clone() as Bitmap, false);
-											if(tempImage != null)
-												bufferAnimatedImage = tempImage;
-										}
-										if(HasAnnotation() || IsAnnuled)
-										{
-											Bitmap bitmapImg = null;
-											if(bufferAnimatedImage.PixelFormat == PixelFormat.Format1bppIndexed)
-												bitmapImg = bufferAnimatedImage.Clone(new Rectangle(0, 0, animatedImage.Width, animatedImage.Height), PixelFormat.Format24bppRgb);
-											else
-												bitmapImg = new Bitmap(bufferAnimatedImage);
-
-											if(animatedImage.HorizontalResolution == 0)
-												bitmapImg.SetResolution(200, 200);
-											else
-												bitmapImg.SetResolution(this.animatedImage.HorizontalResolution, this.animatedImage.VerticalResolution);
-											using(Graphics g = Graphics.FromImage(bitmapImg))
-											{
-												g.InterpolationMode = CurrentInterpolationMode;
-												renderAnnotations.DrawAnnotation(g, this.tiffAnnotation, markGroupsVisibleList, bitmapImg, CurrentInterpolationMode, ref this.selectedRectangles, this.notesToSelectedRectangles);
-												if(AnnotationState == AnnotationsState.CreateText)
-												{
-													g.FillRectangle(Brushes.Black, new RectangleF(invalidRect.X + sin - 1, invalidRect.Y + sin - 1, invalidRect.Width - sin * 2 - 1, invalidRect.Height - sin * 2 - 1));
-													DrawSelectedRectangle(g, new Rectangle(invalidRect.X + sin, invalidRect.Y + sin, invalidRect.Width - sin * 2, invalidRect.Height - sin * 2));
-												}
-											}
-
-											if(cachedBitmap != null)
-												cachedBitmap.Dispose();
-											cachedBitmap = (Bitmap)bitmapImg.Clone();
-											bitmapImg.Dispose();
-											bitmapImg = null;
-										}
-										else
-											cachedBitmap = (Bitmap)bufferAnimatedImage.Clone();
-
-										IsRefreshBitmap = false;
-
-										if(bufferAnimatedImage != animatedImage)
-										{
-											bufferAnimatedImage.Dispose();
-											bufferAnimatedImage = null;
-										}
-									}
-									grMainImage.DrawImage(cachedBitmap, scrollX, scrollY, zoomWigth, zoomHeigth);
-								}
-							}
-
-							try
-							{
-								gr.FillRectangle(SystemBrushes.Control, rectAnimatedImage.X + 1, rectAnimatedImage.Y + 1, widthImage - 3, heightImage - 3);
-								if(bitmapMainImage != null && bitmapMainImage.Width > 0 && bitmapMainImage.Height > 0)
-									gr.DrawImage(bitmapMainImage, rectAnimatedImage.X, rectAnimatedImage.Y);
-								gr.DrawRectangle(Pens.Black, rectAnimatedImage.X, rectAnimatedImage.Y, widthImage - 1, heightImage - 1);
-								if(TypeWorkAnimatedImage == TypeWorkImage.SelectionMode)
-								{
-									using(Pen dotedPen = new Pen(new SolidBrush(Color.Black), 1))
-									{
-										dotedPen.DashStyle = DashStyle.Dot;
-										gr.DrawRectangle(dotedPen, rectAnimatedImage.X + scrollX + (float)(SelectionModeRectangle.X * zoom * ppi / animatedImage.HorizontalResolution), rectAnimatedImage.Y + scrollY + (float)(SelectionModeRectangle.Y * zoom * ppi / animatedImage.VerticalResolution), (float)(SelectionModeRectangle.Width * zoom * ppi / animatedImage.HorizontalResolution), (float)(SelectionModeRectangle.Height * zoom * ppi / animatedImage.HorizontalResolution));
-										dotedPen.Dispose();
-									}
-								}
-							}
-							catch(Exception ex)
-							{
-								Tiff.LibTiffHelper.WriteToLog(ex);
-							}
+							e.Graphics.InterpolationMode = CurrentInterpolationMode;
+							e.Graphics.DrawImage(bitmap, 0, 0);
 						}
 					}
-					catch(Exception ex) { Tiff.LibTiffHelper.WriteToLog(ex); };
-					#endregion
-				}
-
-				try
-				{
-					if(bitmap != null)
+					catch(Exception ex)
 					{
-						e.Graphics.InterpolationMode = CurrentInterpolationMode;
-						e.Graphics.DrawImage(bitmap, 0, 0);
+						Tiff.LibTiffHelper.WriteToLog(ex);
 					}
-				}
-				catch(Exception ex)
-				{
-					Tiff.LibTiffHelper.WriteToLog(ex);
-				}
 
-				if(fullCahedBitmap != null)
-				{
-					fullCahedBitmap.Dispose();
-					fullCahedBitmap = null;
-				}
+					if(fullCahedBitmap != null)
+					{
+						fullCahedBitmap.Dispose();
+						fullCahedBitmap = null;
+					}
 
-				if(UserAction == UsersActionsTypes.Splitter)
-					fullCahedBitmap = bitmap.Clone() as Bitmap;
+					if(UserAction == UsersActionsTypes.Splitter)
+						fullCahedBitmap = bitmap.Clone() as Bitmap;
+				}
+			}
+			catch(Exception ex)
+			{
+				Tiff.LibTiffHelper.WriteToLog(ex);
 			}
 #if AdvancedLogging
 			Log.Logger.LeaveMethod(this, "OnPaint(PaintEventArgs e)");
@@ -6436,17 +6419,6 @@ namespace Kesco.Lib.Win.ImageControl
 		public virtual bool IsAnnuled { get; set; }
 
 		public virtual bool CanSave { get; set; }
-
-		private bool IsPalleteGrayscale(ColorPalette colorPalette)
-		{
-			if((colorPalette.Flags & (int)PaletteFlags.GrayScale) == (int)PaletteFlags.GrayScale)
-				return true;
-
-			for(int i = 0; i < colorPalette.Entries.Length; i++)
-				if(colorPalette.Entries[i].B != colorPalette.Entries[i].R || colorPalette.Entries[i].G != colorPalette.Entries[i].R || colorPalette.Entries[i].B != colorPalette.Entries[i].G)
-					return false;
-			return true;
-		}
 
 		/// <summary>
 		/// Рисование выделения для заметки
@@ -6531,7 +6503,6 @@ namespace Kesco.Lib.Win.ImageControl
 
 			if(check && pageInfo != null && pageInfo.Image != null)
 			{
-
 				UpdatePageRotation(index);
 				var virtualRotationAngle = GetPageRotation(index);
 

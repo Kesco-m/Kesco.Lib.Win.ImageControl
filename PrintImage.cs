@@ -52,7 +52,7 @@ namespace Kesco.Lib.Win.ImageControl
 				EndPrint(this, EventArgs.Empty);
 		}
 
-		public virtual void PrintPage(object[] images, object[] additionalInfo, int startPage, int endPage, int scaleMode, PrintOrientation orientation, bool annotations, int copyCount, string printer, string driverName, string portName)
+		public virtual void PrintPage(string docName, object[] images, object[] additionalInfo, int startPage, int endPage, int scaleMode, PrintOrientation orientation, bool annotations, int copyCount, string printer, string driverName, string portName)
 		{
 			this.orientation = orientation;
 			this.startPage = startPage;
@@ -63,6 +63,7 @@ namespace Kesco.Lib.Win.ImageControl
 			this.annotations = annotations;
 			this.copyCount = copyCount;
 			System.Drawing.Printing.PrintDocument pd = new System.Drawing.Printing.PrintDocument();
+			pd.DocumentName = docName;
 			pd.PrinterSettings.PrinterName = printer;
 			pd.PrinterSettings.MaximumPage = endPage;
 			pd.PrinterSettings.Copies = (short)copyCount;
@@ -141,7 +142,7 @@ namespace Kesco.Lib.Win.ImageControl
 					IntPtr hdc = e.Graphics.GetHdc();
 					int realwidth = GetDeviceCaps(hdc, HORZRES);
 					int realheight = GetDeviceCaps(hdc, VERTRES);
-					e.Graphics.ReleaseHdc(hdc);
+					e.Graphics.ReleaseHdc(hdc);  
 
                     int rx = e.PageSettings.PrinterResolution.X, ry = e.PageSettings.PrinterResolution.Y, rdef = 300;
 					if (rx < 1) rx = rdef; if (ry < 1) ry = rx;
